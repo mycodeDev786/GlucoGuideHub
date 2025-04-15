@@ -149,7 +149,7 @@ export default function Home() {
             <div className="bg-white p-6 rounded-xl shadow hover:shadow-lg transition">
               <p className="text-sm text-gray-600 italic">
                 “GlucoGuideHub helped me take control of my diet and medication.
-                It's a life saver!”
+                It&apos;s a life saver!”
               </p>
               <h4 className="font-semibold text-blue-700 mt-4">
                 — Fatima A., Oman
