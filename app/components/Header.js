@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -25,7 +26,7 @@ export default function Header() {
         <div className="text-2xl font-bold tracking-wide">GlucoGuideHub</div>
 
         {/* Desktop Menu */}
-        <div className="hidden md:flex space-x-6">
+        <div className="hidden md:flex space-x-6 items-center">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -39,6 +40,12 @@ export default function Header() {
               {item.label}
             </Link>
           ))}
+          <Link
+            href="/login"
+            className="bg-yellow-300 text-purple-800 font-semibold px-4 py-1 rounded hover:bg-yellow-400 transition"
+          >
+            Login
+          </Link>
         </div>
 
         {/* Mobile Toggle */}
@@ -70,6 +77,13 @@ export default function Header() {
               {item.label}
             </Link>
           ))}
+          <Link
+            href="/login"
+            className="bg-yellow-300 text-purple-800 font-semibold px-4 py-1 rounded hover:bg-yellow-400 transition"
+            onClick={() => setMenuOpen(false)}
+          >
+            Login
+          </Link>
         </div>
       </div>
     </header>
