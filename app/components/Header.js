@@ -13,7 +13,6 @@ const navItems = [
   { href: "/forum", label: "Forum" },
   { href: "/blog", label: "Blog" },
   { href: "/about", label: "About" },
-  { href: "/mobile-app", label: "Mobile App" },
 ];
 
 export default function Header() {
