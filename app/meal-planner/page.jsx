@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Bar } from "react-chartjs-2";
 import {
@@ -12,6 +12,20 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
+
+// Redux imports
+import { useSelector, useDispatch } from "react-redux";
+import {
+  addFood,
+  removeFood,
+  fetchMealPlan,
+  saveMealPlan,
+  setMealPlanDate,
+} from "../store/mealPlannerSlice"; // Adjust path as needed
+
+// Firebase Auth (for current user ID)
+import { auth } from "../lib/firebaseConfig"; // Adjust path as needed
+import { onAuthStateChanged } from "firebase/auth";
 
 ChartJS.register(
   CategoryScale,
@@ -42,33 +56,58 @@ const calorieTarget = 2000;
 const giTarget = 100;
 
 export default function MealPlannerPage() {
-  const [meals, setMeals] = useState(
-    mealTypes.reduce((acc, meal) => {
-      acc[meal] = [];
-      return acc;
-    }, {})
+  const dispatch = useDispatch();
+  const { meals, status, error, currentDate } = useSelector(
+    (state) => state.mealPlanner
   );
+  const [userId, setUserId] = useState(null); // State to hold current user ID
 
   const [showModal, setShowModal] = useState(false);
-  const [selectedMeal, setSelectedMeal] = useState("");
+  const [selectedMealForCustom, setSelectedMealForCustom] = useState(""); // Renamed to avoid conflict
   const [customFood, setCustomFood] = useState({
     name: "",
     gi: "",
     calories: "",
   });
 
-  const addFoodToMeal = (meal, food) => {
-    setMeals((prev) => ({
-      ...prev,
-      [meal]: [...prev[meal], food],
-    }));
+  // Listen for Firebase auth state changes to get the user ID
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserId(user.uid);
+      } else {
+        setUserId(null); // User logged out
+        dispatch(resetMealPlan()); // Clear meal plan on logout
+      }
+    });
+    return () => unsubscribe();
+  }, [dispatch]);
+
+  // Fetch meal plan when userId or currentDate changes
+  useEffect(() => {
+    if (userId) {
+      dispatch(fetchMealPlan({ userId, date: currentDate }));
+    }
+  }, [userId, currentDate, dispatch]);
+
+  // Save meal plan to Firebase whenever 'meals' state changes (with a debounce)
+  useEffect(() => {
+    if (userId && status === "succeeded") {
+      // Only save if the last operation was successful to avoid infinite loops
+      const handler = setTimeout(() => {
+        dispatch(saveMealPlan({ userId, date: currentDate, meals }));
+      }, 500); // Debounce save to avoid too many writes
+
+      return () => clearTimeout(handler);
+    }
+  }, [meals, userId, currentDate, dispatch, status]); // Added status as dependency
+
+  const handleAddFoodToMeal = (mealType, food) => {
+    dispatch(addFood({ mealType, food }));
   };
 
-  const removeFoodFromMeal = (meal, index) => {
-    setMeals((prev) => ({
-      ...prev,
-      [meal]: prev[meal].filter((_, i) => i !== index),
-    }));
+  const handleRemoveFoodFromMeal = (mealType, index) => {
+    dispatch(removeFood({ mealType, index }));
   };
 
   const getTotal = (meal) => {
@@ -89,13 +128,17 @@ export default function MealPlannerPage() {
 
   const handleAddCustomFood = () => {
     if (!customFood.name || !customFood.gi || !customFood.calories) return;
-    addFoodToMeal(selectedMeal, {
+    handleAddFoodToMeal(selectedMealForCustom, {
       name: customFood.name,
       gi: parseInt(customFood.gi),
       calories: parseInt(customFood.calories),
     });
     setCustomFood({ name: "", gi: "", calories: "" });
     setShowModal(false);
+  };
+
+  const handleDateChange = (e) => {
+    dispatch(setMealPlanDate(e.target.value));
   };
 
   const { totalGI, totalCalories } = getGrandTotals();
@@ -114,11 +157,41 @@ export default function MealPlannerPage() {
     ],
   };
 
+  if (!userId) {
+    return (
+      <div className="max-w-6xl mx-auto py-8 px-4 text-center text-gray-600">
+        Please log in to use the Meal Planner.
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
       <h1 className="text-3xl sm:text-4xl font-bold text-center text-blue-800 mb-10">
         Meal Planner
       </h1>
+
+      <div className="mb-6 flex items-center justify-center">
+        <label htmlFor="meal-date" className="mr-2 text-gray-700">
+          Select Date:
+        </label>
+        <input
+          type="date"
+          id="meal-date"
+          value={currentDate}
+          onChange={handleDateChange}
+          className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      {/* {status === "loading" && (
+        <p className="text-center text-blue-600 mb-4">Loading meal plan...</p>
+      )} */}
+      {status === "failed" && (
+        <p className="text-center text-red-600 mb-4">
+          Error: {error}. Please try again.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
         {mealTypes.map((meal) => (
@@ -130,7 +203,7 @@ export default function MealPlannerPage() {
               <h2 className="text-xl font-semibold text-blue-700">{meal}</h2>
               <button
                 onClick={() => {
-                  setSelectedMeal(meal);
+                  setSelectedMealForCustom(meal);
                   setShowModal(true);
                 }}
                 className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition"
@@ -144,7 +217,7 @@ export default function MealPlannerPage() {
                 <button
                   key={index}
                   className="bg-cyan-100 text-cyan-800 px-3 py-1 rounded-full text-xs hover:bg-cyan-200 transition"
-                  onClick={() => addFoodToMeal(meal, food)}
+                  onClick={() => handleAddFoodToMeal(meal, food)}
                 >
                   + {food.name}
                 </button>
@@ -152,26 +225,27 @@ export default function MealPlannerPage() {
             </div>
 
             <ul className="space-y-2 max-h-36 overflow-y-auto pr-1">
-              {meals[meal].map((food, index) => (
-                <li
-                  key={index}
-                  className="flex justify-between items-center border-b py-1"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{food.name}</p>
-                    <p className="text-xs text-gray-500">
-                      GI: {food.gi} | Calories: {food.calories}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => removeFoodFromMeal(meal, index)}
-                    className="text-red-400 hover:text-red-600"
-                    title="Remove"
+              {meals[meal] &&
+                meals[meal].map((food, index) => (
+                  <li
+                    key={index}
+                    className="flex justify-between items-center border-b py-1"
                   >
-                    <X size={16} />
-                  </button>
-                </li>
-              ))}
+                    <div>
+                      <p className="text-sm font-medium">{food.name}</p>
+                      <p className="text-xs text-gray-500">
+                        GI: {food.gi} | Calories: {food.calories}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveFoodFromMeal(meal, index)}
+                      className="text-red-400 hover:text-red-600"
+                      title="Remove"
+                    >
+                      <X size={16} />
+                    </button>
+                  </li>
+                ))}
             </ul>
 
             <div className="mt-4 text-sm text-gray-700 border-t pt-2">
@@ -212,8 +286,8 @@ export default function MealPlannerPage() {
             <label className="block mb-3 text-sm">
               Select Meal
               <select
-                value={selectedMeal}
-                onChange={(e) => setSelectedMeal(e.target.value)}
+                value={selectedMealForCustom}
+                onChange={(e) => setSelectedMealForCustom(e.target.value)}
                 className="w-full mt-1 p-2 border rounded"
               >
                 {mealTypes.map((meal) => (

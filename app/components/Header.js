@@ -1,11 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation"; // Import useRouter
 import Link from "next/link";
-import { Menu, X, ChevronDown } from "lucide-react"; // Import ChevronDown for the dropdown icon
-import Image from "next/image"; // Import Image component for optimized images
-import { assets } from "@/assets/assets";
+import { Menu, X, ChevronDown } from "lucide-react";
+import Image from "next/image";
+import { assets } from "@/assets/assets"; // Assuming this path is correct
+
+// Redux imports
+import { useSelector, useDispatch } from "react-redux";
+import { logout as authLogout } from "../store/authSlice"; // Alias logout to avoid naming conflict with local handleLogout
+import { getAuth, signOut } from "firebase/auth"; // Import Firebase signOut
+import { app } from "../lib/firebaseConfig"; // Import your Firebase app instance
 
 const navItems = [
   { href: "/gi-calculator", label: "GI Calculator" },
@@ -19,17 +25,31 @@ const navItems = [
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false); // State for dropdown
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter(); // Initialize useRouter
 
-  // Placeholder for authentication state
-  // In a real app, you'd get this from your authentication context or hook
-  const isLoggedIn = true; // Set to true for demonstration
-  const userImage = assets.c3; // Placeholder user image
+  // Get authentication state from Redux store
+  const { isAuthenticated, user } = useSelector((state) => state.auth);
+  const dispatch = useDispatch();
+  const auth = getAuth(app); // Get Firebase auth instance
 
-  const handleLogout = () => {
-    console.log("User logged out");
-    // Implement your actual logout logic here (e.g., clear tokens, redirect)
+  // Use a default image if user.photoURL is not available
+  const userImage = user?.photoURL || assets.c3;
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth); // Sign out from Firebase
+      dispatch(authLogout()); // Dispatch Redux logout action
+      router.push("/login"); // Redirect to login page after logout
+      console.log("User logged out successfully!");
+    } catch (error) {
+      console.error("Error logging out:", error);
+      // Optionally show an error message to the user
+    } finally {
+      setDropdownOpen(false); // Close dropdown whether logout succeeds or fails
+      setMenuOpen(false); // Close mobile menu
+    }
   };
 
   return (
@@ -55,7 +75,7 @@ export default function Header() {
             </Link>
           ))}
 
-          {isLoggedIn ? (
+          {isAuthenticated ? ( // Use isAuthenticated from Redux
             <div className="relative">
               <button
                 className="flex items-center space-x-2 focus:outline-none"
@@ -66,7 +86,7 @@ export default function Header() {
                   alt="User Profile"
                   width={32}
                   height={32}
-                  className="rounded-full"
+                  className="rounded-full object-cover" // Added object-cover for better image fitting
                 />
                 <ChevronDown
                   size={18}
@@ -86,10 +106,7 @@ export default function Header() {
                     Profile
                   </Link>
                   <button
-                    onClick={() => {
-                      handleLogout();
-                      setDropdownOpen(false);
-                    }}
+                    onClick={handleLogout}
                     className="block w-full text-left px-4 py-2 hover:bg-gray-100"
                   >
                     Logout
@@ -136,7 +153,7 @@ export default function Header() {
               {item.label}
             </Link>
           ))}
-          {isLoggedIn ? (
+          {isAuthenticated ? ( // Use isAuthenticated from Redux
             <>
               <Link
                 href="/profile"
@@ -146,10 +163,7 @@ export default function Header() {
                 Profile
               </Link>
               <button
-                onClick={() => {
-                  handleLogout();
-                  setMenuOpen(false);
-                }}
+                onClick={handleLogout}
                 className="w-full text-left bg-yellow-300 text-purple-800 font-semibold px-4 py-1 rounded hover:bg-yellow-400 transition"
               >
                 Logout

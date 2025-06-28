@@ -1,27 +1,47 @@
+// app/login/page.jsx
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-// Import Firebase auth
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-// Assuming you have firebaseConfig.js in a lib folder
+import { useState, useEffect } from "react";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+} from "firebase/auth";
 import { app } from "../lib/firebaseConfig";
-
-// Import icons (you'll need to install @heroicons/react)
-// npm install @heroicons/react
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import Loader from "../components/Loader";
 import { useRouter } from "next/navigation";
+
+// Redux imports
+import { useSelector, useDispatch } from "react-redux";
+import {
+  setStayLoggedIn,
+  setAuthLoading,
+  setAuthError,
+  setUser,
+  logout as authLogout,
+} from "../store/authSlice";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordShown, setPasswordShown] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const router = useRouter();
 
-  const auth = getAuth(app); // Get the auth instance
+  const router = useRouter();
+  const auth = getAuth(app);
+
+  const dispatch = useDispatch();
+  const { stayLoggedIn, loading, error } = useSelector((state) => state.auth);
+
+  useEffect(() => {
+    const savedStayLoggedIn = localStorage.getItem("stayLoggedIn");
+    if (savedStayLoggedIn) {
+      dispatch(setStayLoggedIn(JSON.parse(savedStayLoggedIn))); // Update Redux state from localStorage
+    }
+  }, [dispatch]); // Add dispatch to dependency array
 
   const togglePasswordVisibility = () => {
     setPasswordShown(!passwordShown);
@@ -29,37 +49,79 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(""); // Clear previous errors
-    setLoading(true);
+    dispatch(setAuthError(null));
+    dispatch(setAuthLoading(true));
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // User logged in successfully, you can redirect or show a success message
+      await setPersistence(
+        auth,
+        stayLoggedIn ? browserLocalPersistence : browserSessionPersistence
+      );
+
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      // This is the crucial line:
+      // Ensure userCredential.user is not an empty object {} before dispatching
+      // If it's a valid Firebase User, it will have a 'uid' property.
+      if (userCredential && userCredential.user) {
+        const user = userCredential.user;
+        const serializedUser = {
+          uid: user.uid,
+          email: user.email,
+          emailVerified: user.emailVerified,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          metadata: {
+            creationTime: user.metadata.creationTime,
+            lastSignInTime: user.metadata.lastSignInTime,
+          },
+        };
+
+        dispatch(setUser(serializedUser));
+
+        // Save stayLoggedIn preference to localStorage AFTER successful login
+        localStorage.setItem("stayLoggedIn", JSON.stringify(stayLoggedIn));
+      } else {
+        // This case should ideally not happen with signInWithEmailAndPassword success
+        console.warn(
+          "Login successful but userCredential.user was null or invalid.",
+          userCredential
+        );
+        dispatch(setAuthError("Login successful but user data was not found."));
+        // Maybe dispatch setUser(null) or a specific action to clear user state
+        dispatch(setUser(null)); // Explicitly clear user if something went wrong
+      }
+
       console.log("User logged in successfully!");
       router.push("/");
-      // Example: redirect to a dashboard page
-      // router.push('/dashboard');
     } catch (firebaseError) {
-      // Handle Firebase errors
+      let errorMessage = "An unexpected error occurred. Please try again.";
       switch (firebaseError.code) {
         case "auth/invalid-email":
-          setError("The email address is not valid.");
+          errorMessage = "The email address is not valid.";
           break;
         case "auth/user-not-found":
-          setError("No user found with this email address.");
+          errorMessage = "No user found with this email address.";
           break;
         case "auth/wrong-password":
-          setError("Incorrect password.");
+          errorMessage = "Incorrect password.";
           break;
-        case "auth/invalid-credential": // Firebase 9.0+ often uses this for general auth failures
-          setError("Invalid login credentials.");
+        case "auth/invalid-credential":
+          errorMessage = "Invalid login credentials.";
           break;
         default:
-          setError("An unexpected error occurred. Please try again.");
+          errorMessage = ` login error: ${firebaseError.message}`; // More specific error message
           console.error("Firebase login error:", firebaseError.message);
       }
+      dispatch(setAuthError(errorMessage));
+      // In case of error, ensure user state is cleared
+      dispatch(setUser(null));
     } finally {
-      setLoading(false);
+      dispatch(setAuthLoading(false));
     }
   };
 
@@ -82,7 +144,7 @@ export default function LoginPage() {
           <input
             type={passwordShown ? "text" : "password"}
             placeholder="Password"
-            className="w-full p-2 border rounded pr-10" // Add padding for icon
+            className="w-full p-2 border rounded pr-10"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -97,6 +159,23 @@ export default function LoginPage() {
               <EyeIcon className="h-5 w-5 text-gray-500" />
             )}
           </span>
+        </div>
+
+        <div className="flex items-center">
+          <input
+            id="stayLoggedIn"
+            name="stayLoggedIn"
+            type="checkbox"
+            className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+            checked={stayLoggedIn}
+            onChange={(e) => dispatch(setStayLoggedIn(e.target.checked))}
+          />
+          <label
+            htmlFor="stayLoggedIn"
+            className="ml-2 block text-sm text-gray-900"
+          >
+            Stay logged in
+          </label>
         </div>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
