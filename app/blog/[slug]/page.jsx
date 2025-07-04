@@ -4,6 +4,8 @@
 
 import { notFound } from "next/navigation"; // For showing 404
 import { getBlogPostBySlug } from "../../lib/firebaseUtils"; // Adjust the path as needed
+import ReactMarkdown from "react-markdown"; // Import ReactMarkdown
+import remarkGfm from "remark-gfm"; // Import remark-gfm for GitHub Flavored Markdown
 
 // --- Metadata for SEO (Optional but Recommended) ---
 export async function generateMetadata({ params }) {
@@ -51,20 +53,23 @@ export default async function BlogPostPage({ params }) {
         alt={post.title}
         className="w-full h-96 object-cover rounded-lg mb-6"
       />
-      {/*
-        Using a div with 'prose' class from @tailwindcss/typography plugin
-        to style the raw content. If content contains HTML/Markdown,
-        you might need a library like 'react-markdown' or 'dangerouslySetInnerHTML'.
-      */}
+
+      {/* RENDER MARKDOWN CONTENT */}
       <div className="prose max-w-none text-lg text-gray-700 leading-relaxed">
-        {post.content}
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {post.content}
+        </ReactMarkdown>
       </div>
 
       {post.createdAt &&
         post.createdAt.toDate && ( // Check if createdAt and toDate() exist
           <p className="text-sm text-gray-500 mt-6">
             Published on:{" "}
-            {new Date(post.createdAt.toDate()).toLocaleDateString()}
+            {new Date(post.createdAt.toDate()).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
           </p>
         )}
       {/* You can add a "Go Back" button or other navigation here */}

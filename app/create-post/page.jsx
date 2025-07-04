@@ -2,19 +2,26 @@
 
 import { useState } from "react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Import Storage functions
-import { db, storage } from "../lib/firebaseConfig"; // Import db and storage
-import { useRouter } from "next/navigation"; // Use next/navigation for App Router
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../lib/firebaseConfig";
+import { useRouter } from "next/navigation";
 
 export default function AddBlogPostPage() {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [summary, setSummary] = useState("");
-  const [selectedImage, setSelectedImage] = useState(null); // State for the selected file
+  const [selectedImage, setSelectedImage] = useState(null);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [uploadProgress, setUploadProgress] = useState(0); // For upload progress
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  // AI Generation States
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiKeywords, setAiKeywords] = useState("");
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [aiMessage, setAiMessage] = useState("");
+
   const router = useRouter();
 
   const handleImageChange = (e) => {
@@ -22,6 +29,48 @@ export default function AddBlogPostPage() {
       setSelectedImage(e.target.files[0]);
     } else {
       setSelectedImage(null);
+    }
+  };
+
+  const handleGenerateAIContent = async () => {
+    setGeneratingAI(true);
+    setAiMessage("");
+
+    if (!aiTopic) {
+      setAiMessage("Please enter a topic for AI generation.");
+      setGeneratingAI(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/generate-blog-content", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ topic: aiTopic, keywords: aiKeywords }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate AI content.");
+      }
+
+      // Populate the form fields with AI-generated content
+      setTitle(data.title || "");
+      setSummary(data.summary || "");
+      setContent(data.content || "");
+      // Optionally, you can set the slug or display the generated SEO keywords
+      // setSlug(data.slug || ""); // If your AI generates a slug
+      setAiMessage(
+        "Content generated successfully! Please review and make any necessary edits."
+      );
+    } catch (error) {
+      console.error("Error generating AI content:", error);
+      setAiMessage(`Error generating content: ${error.message}`);
+    } finally {
+      setGeneratingAI(false);
     }
   };
 
@@ -37,7 +86,6 @@ export default function AddBlogPostPage() {
       return;
     }
 
-    // Generate a slug from the title if not provided
     const generatedSlug =
       slug ||
       title
@@ -50,26 +98,23 @@ export default function AddBlogPostPage() {
       const storageRef = ref(
         storage,
         `blog_images/${selectedImage.name}_${Date.now()}`
-      ); // Unique filename
+      );
       const uploadTask = uploadBytesResumable(storageRef, selectedImage);
 
       uploadTask.on(
         "state_changed",
         (snapshot) => {
-          // Observe state change events such as progress, pause, and resume
           const progress =
             (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           setUploadProgress(progress);
           console.log("Upload is " + progress + "% done");
         },
         (error) => {
-          // Handle unsuccessful uploads
           console.error("Error uploading image:", error);
           setMessage("Error uploading image: " + error.message);
           setLoading(false);
         },
         async () => {
-          // Handle successful uploads on complete
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           console.log("File available at", downloadURL);
 
@@ -79,7 +124,7 @@ export default function AddBlogPostPage() {
               title,
               slug: generatedSlug,
               summary,
-              image: downloadURL, // Save the Storage URL here
+              image: downloadURL,
               content,
               createdAt: serverTimestamp(),
             });
@@ -87,10 +132,13 @@ export default function AddBlogPostPage() {
             setTitle("");
             setSlug("");
             setSummary("");
-            setSelectedImage(null); // Clear selected image
+            setSelectedImage(null);
             setContent("");
             setUploadProgress(0);
-            router.push("/blog"); // Redirect to blog page
+            setAiTopic(""); // Clear AI fields after successful submission
+            setAiKeywords("");
+            setAiMessage("");
+            router.push("/blog");
           } catch (firestoreError) {
             console.error(
               "Error adding document to Firestore: ",
@@ -121,6 +169,63 @@ export default function AddBlogPostPage() {
         onSubmit={handleSubmit}
         className="bg-white p-8 rounded-xl shadow-md"
       >
+        {/* AI Content Generation Section */}
+        <div className="mb-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
+          <h2 className="text-2xl font-semibold text-blue-700 mb-4">
+            Generate Content with AI
+          </h2>
+          <div className="mb-4">
+            <label
+              htmlFor="aiTopic"
+              className="block text-gray-700 text-sm font-bold mb-2"
+            >
+              Topic for AI Generation:
+            </label>
+            <input
+              type="text"
+              id="aiTopic"
+              value={aiTopic}
+              onChange={(e) => setAiTopic(e.target.value)}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              placeholder="e.g., Benefits of Cloud Computing for Small Businesses"
+            />
+          </div>
+          <div className="mb-4">
+            <label
+              htmlFor="aiKeywords"
+              className="block text-gray-700 text-sm font-bold mb-2"
+            >
+              Optional SEO Keywords (comma-separated):
+            </label>
+            <input
+              type="text"
+              id="aiKeywords"
+              value={aiKeywords}
+              onChange={(e) => setAiKeywords(e.target.value)}
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              placeholder="e.g., cloud security, cost savings, scalability"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleGenerateAIContent}
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            disabled={generatingAI}
+          >
+            {generatingAI ? "Generating..." : "Generate AI Content"}
+          </button>
+          {aiMessage && (
+            <p
+              className={`mt-4 text-center ${
+                aiMessage.includes("Error") ? "text-red-500" : "text-green-500"
+              }`}
+            >
+              {aiMessage}
+            </p>
+          )}
+        </div>
+
+        {/* Existing Blog Post Form Fields */}
         <div className="mb-4">
           <label
             htmlFor="title"
@@ -189,7 +294,7 @@ export default function AddBlogPostPage() {
           <input
             type="file"
             id="imageUpload"
-            accept="image/*" // Restrict to image files
+            accept="image/*"
             onChange={handleImageChange}
             className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
             required
