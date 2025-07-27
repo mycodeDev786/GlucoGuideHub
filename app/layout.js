@@ -23,6 +23,11 @@ export default function RootLayout({ children }) {
         <link rel="canonical" href="https://www.glucoguidehub.com/" />
         <meta name="theme-color" content="#ffffff" />
         <meta name="robots" content="index, follow" />
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6379961667392249"
+          crossorigin="anonymous"
+        ></script>
       </head>
       <body className="min-h-screen flex flex-col bg-gray-50">
         <Providers>
