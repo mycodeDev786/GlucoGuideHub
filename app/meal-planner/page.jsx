@@ -26,6 +26,7 @@ import {
 // Firebase Auth (for current user ID)
 import { auth } from "../lib/firebaseConfig"; // Adjust path as needed
 import { onAuthStateChanged } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 ChartJS.register(
   CategoryScale,
@@ -57,6 +58,7 @@ const giTarget = 100;
 
 export default function MealPlannerPage() {
   const dispatch = useDispatch();
+  const router = useRouter();
   const { meals, status, error, currentDate } = useSelector(
     (state) => state.mealPlanner
   );
@@ -76,12 +78,14 @@ export default function MealPlannerPage() {
       if (user) {
         setUserId(user.uid);
       } else {
-        setUserId(null); // User logged out
-        dispatch(resetMealPlan()); // Clear meal plan on logout
+        setUserId(null);
+        // dispatch(resetMealPlan()); // Clear store
+        router.push("/login"); // ✅ REDIRECT TO LOGIN
       }
     });
+
     return () => unsubscribe();
-  }, [dispatch]);
+  }, [dispatch, router]);
 
   // Fetch meal plan when userId or currentDate changes
   useEffect(() => {
