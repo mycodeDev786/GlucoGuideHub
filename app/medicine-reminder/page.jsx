@@ -14,16 +14,8 @@ import {
   // For user-specific queries, you'll need:
   where,
 } from "firebase/firestore";
-import {
-  onAuthStateChanged,
-  signInAnonymously,
-  signOut,
-  // If you want to offer email/password or Google sign-in later:
-  // createUserWithEmailAndPassword,
-  // signInWithEmailAndPassword,
-  // GoogleAuthProvider,
-  // signInWithPopup,
-} from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 import { db, auth } from "../lib/firebaseConfig"; // Adjust this path and import auth
 
@@ -36,37 +28,23 @@ const MedicineReminderPage = () => {
     time: "",
   });
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null); // State to hold the authenticated user
 
-  // --- Firebase Authentication Handling ---
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
-        // If user is authenticated, start fetching their medicines
-        // (The medicine fetching useEffect will react to `user` change)
+        setLoading(false);
       } else {
-        // No user logged in, try anonymous login
-        try {
-          const anonymousUserCredential = await signInAnonymously(auth);
-          setUser(anonymousUserCredential.user);
-          console.log(
-            "Signed in anonymously. User ID:",
-            anonymousUserCredential.user.uid
-          );
-        } catch (authError) {
-          console.error("Error signing in anonymously:", authError);
-          setError("Failed to sign in. Please try refreshing the page.");
-          setLoading(false); // Stop loading if anonymous sign-in fails
-        }
+        router.push("/login"); // ✅ REDIRECT TO LOGIN
       }
-      // If user is resolved (either existing or anonymous), stop global loading
-      if (user || currentUser) setLoading(false);
     });
 
     return () => unsubscribeAuth();
-  }, [user]); // Re-run if user object changes (e.g., from null to a user)
+  }, [router]);
 
   // --- Firebase Firestore Data Handling (User-Specific) ---
   useEffect(() => {

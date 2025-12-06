@@ -1,56 +1,61 @@
-// app/api/gi/route.js
-
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY;
-
-if (!geminiApiKey) {
-  console.error("GOOGLE_GEMINI_API_KEY environment variable is not set.");
-}
-
-const genAI = new GoogleGenerativeAI(geminiApiKey || "");
-
-// --- Debugging function to list available models ---
-
-// Call this function once when the API route initializes
-
-// --- End of debugging function ---
-
 export async function POST(request) {
-  const { food, prompt } = await request.json();
-
-  if (!food || !prompt) {
-    return NextResponse.json(
-      { success: false, error: "Food name and prompt are required." },
-      { status: 400 }
-    );
-  }
-
-  if (!geminiApiKey) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Server configuration error: Gemini API key not set.",
-      },
-      { status: 500 }
-    );
-  }
-
   try {
-    // IMPORTANT: Check your console output from `listAndLogAvailableModels`
-    // and use a model listed that supports 'generateContent'.
-    // 'gemini-pro' is a commonly available model for text generation.
-    // If 'gemini-pro' gives 404, try 'gemini-1.5-flash-latest' or 'gemini-1.5-pro-latest' if available.
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash-latest",
-    });
+    const API_KEY = process.env.GOOGLE_GEMINI_API_KEY;
 
-    // Changed from gemini-1.0-pro
+    if (!API_KEY) {
+      console.error("GOOGLE_GEMINI_API_KEY is not set.");
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Server configuration error: API key missing.",
+        },
+        { status: 500 }
+      );
+    }
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text();
+    const { food, prompt } = await request.json();
+
+    if (!food || !prompt) {
+      return NextResponse.json(
+        { success: false, error: "Food name and prompt are required." },
+        { status: 400 }
+      );
+    }
+
+    console.log("GI Prompt sent to Gemini:", prompt);
+
+    // ✅✅✅ VERIFIED WORKING MODEL FROM YOUR ACCOUNT
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=" +
+        API_KEY,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: prompt }],
+            },
+          ],
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Gemini API raw error:", data);
+      return NextResponse.json(
+        { success: false, error: "Gemini API failed.", details: data },
+        { status: 500 }
+      );
+    }
+
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     console.log("Raw Gemini response text:", text);
 
@@ -61,42 +66,25 @@ export async function POST(request) {
       );
     }
 
+    // ✅✅✅ CLEAN & PARSE JSON
     let parsedResult;
     try {
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-      let jsonString = text;
-
-      if (jsonMatch && jsonMatch[1]) {
-        jsonString = jsonMatch[1];
-        console.log("Extracted JSON string from code block:", jsonString);
-      } else if (text.includes("{") && text.includes("}")) {
-        const firstBrace = text.indexOf("{");
-        const lastBrace = text.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          jsonString = text.substring(firstBrace, lastBrace + 1);
-          console.log("Extracted potential JSON string:", jsonString);
-        }
-      }
-
-      parsedResult = JSON.parse(jsonString);
+      text = text.replace(/```json|```/g, "").trim();
+      parsedResult = JSON.parse(text);
     } catch (jsonParseError) {
-      console.error(
-        "Failed to parse AI response as JSON:",
-        text,
-        jsonParseError
-      );
+      console.error("Failed to parse AI response as JSON:", text);
       return NextResponse.json(
         {
           success: false,
           error:
-            "Failed to interpret AI response. It might not be valid JSON. Raw response snippet: " +
-            text.substring(0, 200) +
-            "...",
+            "Failed to interpret AI response as JSON. Raw response: " +
+            text.substring(0, 200),
         },
         { status: 500 }
       );
     }
 
+    // ✅✅✅ STRUCTURE VALIDATION
     if (
       parsedResult &&
       typeof parsedResult === "object" &&
@@ -107,26 +95,21 @@ export async function POST(request) {
     ) {
       return NextResponse.json({ success: true, result: parsedResult });
     } else {
-      console.error(
-        "AI returned unexpected JSON structure or missing keys:",
-        parsedResult
-      );
+      console.error("Invalid JSON structure from AI:", parsedResult);
       return NextResponse.json(
         {
           success: false,
-          error:
-            "AI response format was incorrect or missing data. Please try again.",
+          error: "AI response format incorrect or missing required fields.",
         },
         { status: 500 }
       );
     }
   } catch (error) {
-    console.error("Error communicating with Gemini API:", error);
+    console.error("Fatal Gemini API Error:", error);
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Error processing your request with Gemini. Please try again. (Details in server logs)",
+        error: "Error processing your request with Gemini. Please try again.",
       },
       { status: 500 }
     );
