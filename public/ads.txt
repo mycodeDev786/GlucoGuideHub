@@ -1,0 +1,10 @@
+# ============================================================
+#  ads.txt  —  place this file in your /public folder
+#  It will be served at https://taleem4u.com/ads.txt
+#
+#  IMPORTANT: Replace ca-pub-XXXXXXXXXXXXXXXX below with
+#  your REAL AdSense Publisher ID before deploying.
+#  Your Publisher ID is in AdSense → Account → Account information
+# ============================================================
+
+google.com, pub-6379961667392249, DIRECT, f08c47fec0942fa0
